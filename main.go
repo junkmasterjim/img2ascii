@@ -39,18 +39,34 @@ func main() {
 	img := openImage(flag.Args()[0])
 	lightnessGrid := getLightnessGrid(img)
 
-	outPath := "ascii_" + strings.Split(flag.Arg(0), ".")[0] + ".txt"
+	var outPath string
+	if *d == true && *inv == true {
+		outPath = "ascii_" + strings.Split(flag.Arg(0), ".")[0] + "_inverted_dithered.txt"
+	}
+	if *d == true && *inv != true {
+		outPath = "ascii_" + strings.Split(flag.Arg(0), ".")[0] + "_dithered.txt"
+	}
+	if *inv == true && *d != true {
+		outPath = "ascii_" + strings.Split(flag.Arg(0), ".")[0] + "_inverted.txt"
+	} else if *inv != true && *d != true {
+		outPath = "ascii_" + strings.Split(flag.Arg(0), ".")[0] + ".txt"
+	}
+
 	out, err := os.Create(outPath)
 	if err != nil {
 		fmt.Println("error creating file:", err)
 		os.Exit(1)
 	}
 
-	asciiGrid := make([][]string, img.Bounds().Max.Y)
-	for y := range lightnessGrid {
+	width, height := img.Bounds().Max.X, img.Bounds().Max.Y
+	asciiGrid := make([][]string, width)
+	for x := range asciiGrid {
+		asciiGrid[x] = make([]string, height)
+	}
+
+	for y := 0; y < height; y++ {
 		line := ""
-		asciiGrid[y] = make([]string, img.Bounds().Max.X)
-		for x := range lightnessGrid[y] {
+		for x := 0; x < width; x++ {
 			var char string
 			if *d == true {
 				char = getDitheredAscii(lightnessGrid[x][y], *inv)
@@ -194,10 +210,10 @@ func getLightnessGrid(img image.Image) [][]float64 {
 	bounds := img.Bounds()
 	width, height := bounds.Max.X, bounds.Max.Y
 
-	p := make([][]float64, height)
+	p := make([][]float64, width)
 	for x := range p {
-		p[x] = make([]float64, width)
-		for y := range p[x] {
+		p[x] = make([]float64, height)
+		for y := 0; y < height; y++ {
 			r, g, b, _ := img.At(x, y).RGBA()
 			p[x][y] = getLightness(
 				uint8(r>>8),
