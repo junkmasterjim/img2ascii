@@ -7,15 +7,19 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/crazy3lf/colorconv"
+	"github.com/nfnt/resize"
 )
 
 type ConfigOptions struct {
 	dither bool
 	invert bool
+	scale  float64
 }
 
 type pixel struct {
@@ -31,25 +35,45 @@ func main() {
 	inv := flag.Bool("i", false, "Invert colors")
 	flag.Parse()
 
-	if flag.NArg() != 1 {
+	args := flag.Args()
+	if len(args) < 1 || len(args) > 2 {
 		printUsage()
 		return
 	}
 
-	img := openImage(flag.Args()[0])
-	lightnessGrid := getLightnessGrid(img)
+	imagePath := args[0]
+	scale := 0.5 // default scale
+
+	if len(args) == 2 {
+		re := regexp.MustCompile(`(\S+)\s+(\d+(\.\d+)?)$`)
+		matches := re.FindStringSubmatch(strings.Join(args, " "))
+		if matches != nil {
+			imagePath = matches[1]
+			if s, err := strconv.ParseFloat(matches[2], 64); err == nil {
+				scale = s
+			}
+		}
+	}
+
+	config := ConfigOptions{
+		dither: *d,
+		invert: *inv,
+		scale:  scale,
+	}
+
+	img := openImage(imagePath)
+	scaledImg := resize.Resize(uint(float64(img.Bounds().Max.X)*config.scale), 0, img, resize.Lanczos3)
+	lightnessGrid := getLightnessGrid(scaledImg)
 
 	var outPath string
-	if *d == true && *inv == true {
-		outPath = "ascii_" + strings.Split(flag.Arg(0), ".")[0] + "_inverted_dithered.txt"
-	}
-	if *d == true && *inv != true {
-		outPath = "ascii_" + strings.Split(flag.Arg(0), ".")[0] + "_dithered.txt"
-	}
-	if *inv == true && *d != true {
-		outPath = "ascii_" + strings.Split(flag.Arg(0), ".")[0] + "_inverted.txt"
-	} else if *inv != true && *d != true {
-		outPath = "ascii_" + strings.Split(flag.Arg(0), ".")[0] + ".txt"
+	if config.dither && config.invert {
+		outPath = fmt.Sprintf("ascii_%s_inverted_dithered.txt", strings.Split(imagePath, ".")[0])
+	} else if config.dither {
+		outPath = fmt.Sprintf("ascii_%s_dithered.txt", strings.Split(imagePath, ".")[0])
+	} else if config.invert {
+		outPath = fmt.Sprintf("ascii_%s_inverted.txt", strings.Split(imagePath, ".")[0])
+	} else {
+		outPath = fmt.Sprintf("ascii_%s.txt", strings.Split(imagePath, ".")[0])
 	}
 
 	out, err := os.Create(outPath)
@@ -57,29 +81,25 @@ func main() {
 		fmt.Println("error creating file:", err)
 		os.Exit(1)
 	}
+	defer out.Close()
 
-	width, height := img.Bounds().Max.X, img.Bounds().Max.Y
-	asciiGrid := make([][]string, width)
-	for x := range asciiGrid {
-		asciiGrid[x] = make([]string, height)
-	}
+	width, height := scaledImg.Bounds().Max.X, scaledImg.Bounds().Max.Y
 
 	for y := 0; y < height; y++ {
 		line := ""
 		for x := 0; x < width; x++ {
 			var char string
-			if *d == true {
-				char = getDitheredAscii(lightnessGrid[x][y], *inv)
+			if config.dither {
+				char = getDitheredAscii(lightnessGrid[x][y], config.invert)
 			} else {
-				char = getAscii(lightnessGrid[x][y], *inv)
+				char = getAscii(lightnessGrid[x][y], config.invert)
 			}
 			line += char
 		}
 		out.WriteString(line + "\n")
 	}
 
-	fmt.Printf("saved ascii art to ./%s\n", outPath)
-	defer out.Close()
+	fmt.Printf("Saved ASCII art to ./%s\n", outPath)
 }
 
 // ------------------------
@@ -180,9 +200,10 @@ func getAscii(lightness float64, invert bool) string {
 }
 
 func printUsage() {
-	fmt.Println("usage: img2ascii [-d] [-i] <path/to/image>")
+	fmt.Println("usage: img2ascii [-d] [-i] <path/to/image> [scale]")
 	fmt.Println("  -d apply dithering to image")
 	fmt.Println("  -i invert colors")
+	fmt.Println("  scale: optional scale factor (default: 1.0)")
 }
 
 func openImage(path string) image.Image {
