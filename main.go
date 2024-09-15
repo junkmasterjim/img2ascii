@@ -7,7 +7,6 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -35,23 +34,19 @@ func main() {
 	inv := flag.Bool("i", false, "Invert colors")
 	flag.Parse()
 
+	scale := 0.25 // default scale
 	args := flag.Args()
 	if len(args) < 1 || len(args) > 2 {
 		printUsage()
 		return
 	}
-
 	imagePath := args[0]
-	scale := 0.5 // default scale
 
 	if len(args) == 2 {
-		re := regexp.MustCompile(`(\S+)\s+(\d+(\.\d+)?)$`)
-		matches := re.FindStringSubmatch(strings.Join(args, " "))
-		if matches != nil {
-			imagePath = matches[1]
-			if s, err := strconv.ParseFloat(matches[2], 64); err == nil {
-				scale = s
-			}
+		if s, err := strconv.ParseFloat(args[1], 64); err == nil {
+			scale = s
+		} else {
+			fmt.Println("Invalid scale value. Using default scale:", scale)
 		}
 	}
 
